@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/Button';
 import { packages } from '@/data/packages';
 import { useQuoteStore } from '@/store/useQuoteStore';
 import { calculateQuote, applyDiscount, formatPrice } from '@/utils/calculator';
+import { cn } from '@/lib/utils';
 import type { QuoteTier, AnyDiscount } from '@/types';
 import { encodeConsultationToUrl } from '@/pages/Consultation';
 
@@ -35,11 +36,13 @@ const QuoteDetail: React.FC = () => {
     selectedTierId,
     selectedDiscount,
     managerApproved,
+    discountApplied,
     patientInfo,
     setConfig,
     setSelectedTier,
     setDiscount,
     setManagerApproved,
+    setDiscountApplied,
     setPatientInfo,
     createConsultation,
   } = useQuoteStore();
@@ -82,15 +85,24 @@ const QuoteDetail: React.FC = () => {
     return selectedDiscount?.requiresManagerApproval === true;
   }, [selectedDiscount]);
 
-  const discountApproved = useMemo(() => {
-    return needsApproval ? managerApproved : true;
-  }, [needsApproval, managerApproved]);
+  // 优惠是否已授权（不需要确认的视为自动已授权）
+  const isAuthorized = useMemo(() => {
+    if (!selectedDiscount) return false;
+    return !needsApproval || managerApproved;
+  }, [selectedDiscount, needsApproval, managerApproved]);
+
+  // 优惠是否已应用到成交价（需要确认的必须已授权且已点确认应用）
+  const discountActive = useMemo(() => {
+    if (!selectedDiscount) return false;
+    if (!needsApproval) return true;
+    return managerApproved && discountApplied;
+  }, [selectedDiscount, needsApproval, managerApproved, discountApplied]);
 
   const finalPrice = useMemo(() => {
     if (!selectedTier) return 0;
-    if (!discountApproved) return selectedTier.totalPrice;
+    if (!discountActive) return selectedTier.totalPrice;
     return applyDiscount(selectedTier.totalPrice, selectedDiscount);
-  }, [selectedTier, selectedDiscount, discountApproved]);
+  }, [selectedTier, selectedDiscount, discountActive]);
 
   const previewPrice = useMemo(() => {
     if (!selectedTier || !selectedDiscount) return 0;
@@ -133,7 +145,7 @@ const QuoteDetail: React.FC = () => {
       (m) => m.id === currentConfig.materialId
     );
 
-    const effectiveDiscount = discountApproved ? selectedDiscount : null;
+    const effectiveDiscount = discountActive ? selectedDiscount : null;
     const effectiveFinalPrice = effectiveDiscount
       ? applyDiscount(selectedTier.totalPrice, effectiveDiscount)
       : selectedTier.totalPrice;
@@ -300,37 +312,58 @@ const QuoteDetail: React.FC = () => {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-mint-50 flex items-center justify-center">
-                    <Tag size={22} className="text-mint" />
+                  <div className={cn(
+                    'w-12 h-12 rounded-2xl flex items-center justify-center',
+                    discountActive ? 'bg-mint-50' : needsApproval && managerApproved ? 'bg-primary-50' : 'bg-mint-50'
+                  )}>
+                    <Tag size={22} className={
+                      discountActive ? 'text-mint' : needsApproval && managerApproved ? 'text-primary' : 'text-mint'
+                    } />
                   </div>
                   <div>
                     <h3 className="font-bold text-slate">优惠调整</h3>
                     <p className="text-sm text-slate-light">
                       {selectedDiscount
-                        ? needsApproval && !managerApproved
-                          ? `${selectedDiscount.name}（测算中）`
-                          : selectedDiscount.name
+                        ? discountActive
+                          ? `${selectedDiscount.name}（已应用）`
+                          : needsApproval && managerApproved
+                          ? `${selectedDiscount.name}（已授权，待应用）`
+                          : `${selectedDiscount.name}（测算中）`
                         : '暂未使用优惠'}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* 未确认：显示测算优惠 */}
                   {selectedDiscount && needsApproval && !managerApproved && previewDiscountAmount > 0 && (
                     <span className="text-coral/60 font-medium text-sm">
                       测算 -¥{formatPrice(previewDiscountAmount)}
                     </span>
                   )}
-                  {discountAmount > 0 && discountApproved && (
+                  {/* 已授权但未应用：显示待应用优惠 */}
+                  {selectedDiscount && needsApproval && managerApproved && !discountApplied && previewDiscountAmount > 0 && (
+                    <span className="text-primary font-medium text-sm">
+                      待应用 -¥{formatPrice(previewDiscountAmount)}
+                    </span>
+                  )}
+                  {/* 已应用：显示实际优惠 */}
+                  {discountAmount > 0 && discountActive && (
                     <span className="text-coral font-bold">-¥{formatPrice(discountAmount)}</span>
                   )}
                   <ChevronRight size={20} className="text-slate-light" />
                 </div>
               </div>
-              {/* 未授权优惠提示 */}
+              {/* 底部状态提示 */}
               {selectedDiscount && needsApproval && !managerApproved && (
                 <div className="mt-3 p-3 bg-coral-50 rounded-xl flex items-center gap-2 text-coral text-sm">
                   <AlertTriangle size={16} />
                   <span>该优惠需主管确认，当前仅做测算展示，不计入成交价</span>
+                </div>
+              )}
+              {selectedDiscount && needsApproval && managerApproved && !discountApplied && (
+                <div className="mt-3 p-3 bg-primary-50 rounded-xl flex items-center gap-2 text-primary text-sm">
+                  <ShieldCheck size={16} />
+                  <span>主管已授权，请进入面板点击「确认应用优惠」以计入成交价</span>
                 </div>
               )}
             </div>
@@ -347,17 +380,36 @@ const QuoteDetail: React.FC = () => {
               {selectedTier && (
                 <div className="text-right">
                   <p className="text-sm text-slate-light">
-                    {needsApproval && !managerApproved ? '测算价（待确认）' : '已选方案总价'}
+                    {needsApproval && !managerApproved
+                      ? '测算价（待确认）'
+                      : needsApproval && managerApproved && !discountApplied
+                      ? '成交价（优惠待应用）'
+                      : '已选方案总价'}
                   </p>
-                  <p className={needsApproval && !managerApproved ? 'text-3xl font-bold text-coral/60' : 'text-3xl font-bold text-primary'}>
+                  <p className={cn(
+                    'text-3xl font-bold',
+                    needsApproval && !managerApproved
+                      ? 'text-coral/60'
+                      : needsApproval && managerApproved && !discountApplied
+                      ? 'text-slate'
+                      : 'text-primary'
+                  )}>
                     ¥{formatPrice(finalPrice)}
                   </p>
+                  {/* 待确认：显示可享优惠 */}
                   {needsApproval && !managerApproved && previewDiscountAmount > 0 && (
                     <p className="text-sm text-coral/60">
                       确认后可享 -¥{formatPrice(previewDiscountAmount)}
                     </p>
                   )}
-                  {discountAmount > 0 && discountApproved && (
+                  {/* 已授权未应用：显示待应用优惠 */}
+                  {needsApproval && managerApproved && !discountApplied && previewDiscountAmount > 0 && (
+                    <p className="text-sm text-primary">
+                      应用后可享 -¥{formatPrice(previewDiscountAmount)}，请进入优惠面板点确认应用
+                    </p>
+                  )}
+                  {/* 已应用：显示已优惠 */}
+                  {discountAmount > 0 && discountActive && (
                     <p className="text-sm text-coral">
                       已优惠 ¥{formatPrice(discountAmount)}
                     </p>
@@ -366,15 +418,16 @@ const QuoteDetail: React.FC = () => {
               )}
             </div>
 
-            {/* 三档报价卡片 - 始终按成交价展示（不含未授权优惠） */}
+            {/* 三档报价卡片 - 始终按成交价展示（未应用的优惠不计入） */}
             <div className="grid grid-cols-3 gap-5 mb-8">
               {quoteResult?.tiers.map((tier, index) => {
-                const tierFinalPrice = discountApproved
+                const tierFinalPrice = discountActive
                   ? applyDiscount(tier.totalPrice, selectedDiscount as AnyDiscount)
                   : tier.totalPrice;
                 const tierPreviewPrice = selectedDiscount
                   ? applyDiscount(tier.totalPrice, selectedDiscount as AnyDiscount)
                   : tier.totalPrice;
+                const showPreview = needsApproval && tierPreviewPrice !== tierFinalPrice;
 
                 return (
                   <QuoteTierCard
@@ -383,9 +436,7 @@ const QuoteDetail: React.FC = () => {
                       ...tier,
                       totalPrice: tierFinalPrice,
                       originalPrice: tier.totalPrice,
-                      previewPrice: needsApproval && !managerApproved && tierPreviewPrice !== tierFinalPrice
-                        ? tierPreviewPrice
-                        : undefined,
+                      previewPrice: showPreview ? tierPreviewPrice : undefined,
                     }}
                     isSelected={selectedTierId === tier.id}
                     isHighlighted={tier.id === 'tier-standard'}
@@ -434,8 +485,8 @@ const QuoteDetail: React.FC = () => {
                     <span className="text-slate">{selectedTier.name}</span>
                   </div>
 
-                  {/* 已授权优惠 - 正常显示 */}
-                  {discountAmount > 0 && discountApproved && (
+                  {/* 已应用优惠 - 正常显示 */}
+                  {discountAmount > 0 && discountActive && (
                     <div className="flex justify-between text-coral">
                       <span>{selectedDiscount?.name}</span>
                       <span>-¥{formatPrice(discountAmount)}</span>
@@ -453,19 +504,43 @@ const QuoteDetail: React.FC = () => {
                     </div>
                   )}
 
+                  {/* 已授权待应用 - 待应用展示 */}
+                  {needsApproval && managerApproved && !discountApplied && selectedDiscount && previewDiscountAmount > 0 && (
+                    <div className="flex justify-between text-primary/70">
+                      <span className="flex items-center gap-1">
+                        {selectedDiscount.name}
+                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">待应用</span>
+                      </span>
+                      <span>-¥{formatPrice(previewDiscountAmount)}</span>
+                    </div>
+                  )}
+
                   <div className="pt-3 border-t border-gray-100 flex justify-between">
                     <span className="font-medium text-slate">
-                      {needsApproval && !managerApproved ? '成交价（不含待确认优惠）' : '合计'}
+                      {needsApproval && !managerApproved
+                        ? '成交价（不含待确认优惠）'
+                        : needsApproval && managerApproved && !discountApplied
+                        ? '合计（优惠待应用）'
+                        : '合计'}
                     </span>
                     <span className="text-xl font-bold text-primary">¥{formatPrice(finalPrice)}</span>
                   </div>
 
                   {/* 测算价对比提示 */}
                   {needsApproval && !managerApproved && previewDiscountAmount > 0 && (
-                    <div className="p-3 bg-coral-50 rounded-xl flex items-center gap-2 text-coral text-xs">
+                    <div className="p-3 bg-coral-50 rounded-xl flex items-center gap-2 text-coral text-xs mt-2">
                       <AlertTriangle size={14} />
                       <span>
-                        主管确认后成交价可降至 ¥{formatPrice(previewPrice)}（再减 ¥{formatPrice(previewDiscountAmount)}）
+                        主管确认并应用后成交价可降至 ¥{formatPrice(previewPrice)}（再减 ¥{formatPrice(previewDiscountAmount)}）
+                      </span>
+                    </div>
+                  )}
+                  {/* 已授权待应用提示 */}
+                  {needsApproval && managerApproved && !discountApplied && previewDiscountAmount > 0 && (
+                    <div className="p-3 bg-primary-50 rounded-xl flex items-center gap-2 text-primary text-xs mt-2">
+                      <ShieldCheck size={14} />
+                      <span>
+                        主管已授权，请进入「优惠调整」点击「确认应用优惠」，成交价可降至 ¥{formatPrice(previewPrice)}
                       </span>
                     </div>
                   )}
@@ -476,25 +551,39 @@ const QuoteDetail: React.FC = () => {
             {/* 生成洽谈单按钮 */}
             <div className="mt-6">
               {needsApproval && !managerApproved ? (
-              <div className="p-4 bg-coral-50 rounded-2xl mb-3 flex items-start gap-3">
-                <AlertTriangle size={20} className="text-coral flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-coral font-medium mb-0.5">当前优惠需主管确认</p>
-                  <p className="text-coral/70 text-sm">
-                    该优惠「{selectedDiscount?.name}」尚未授权，无法直接生成洽谈单。请先联系主管确认，或到上方「优惠调整」中清除该优惠后再生成。
-                  </p>
+                <div className="p-4 bg-coral-50 rounded-2xl mb-3 flex items-start gap-3 animate-fade-in">
+                  <AlertTriangle size={20} className="text-coral flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-coral font-medium mb-0.5">当前优惠需主管确认</p>
+                    <p className="text-coral/70 text-sm">
+                      该优惠「{selectedDiscount?.name}」尚未授权，无法直接生成洽谈单。请先联系主管确认，或到上方「优惠调整」中清除该优惠后再生成。
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : needsApproval && managerApproved && !discountApplied ? (
+                <div className="p-4 bg-primary-50 rounded-2xl mb-3 flex items-start gap-3 animate-fade-in">
+                  <ShieldCheck size={20} className="text-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-primary font-medium mb-0.5">优惠已授权，待应用</p>
+                    <p className="text-primary/70 text-sm">
+                      主管已确认「{selectedDiscount?.name}」，请进入「优惠调整」点击「确认应用优惠」后，优惠才会计入成交价并生成洽谈单。
+                    </p>
+                  </div>
+                </div>
+              ) : null}
 
               <Button
                 size="lg"
                 fullWidth
                 onClick={handleGenerateForm}
-                disabled={!selectedTier || (needsApproval && !managerApproved)}
+                disabled={!selectedTier || (needsApproval && (!managerApproved || !discountApplied))}
               >
                 <FileText size={20} className="mr-2" />
-                {needsApproval && !managerApproved ? '优惠待主管确认' : '生成洽谈单'}
+                {needsApproval && !managerApproved
+                  ? '优惠待主管确认'
+                  : needsApproval && managerApproved && !discountApplied
+                  ? '优惠待应用'
+                  : '生成洽谈单'}
               </Button>
             </div>
           </div>
@@ -508,8 +597,13 @@ const QuoteDetail: React.FC = () => {
         originalPrice={selectedTier?.totalPrice || 0}
         selectedDiscount={selectedDiscount as AnyDiscount}
         managerApproved={managerApproved}
+        discountApplied={discountApplied}
         onSelectDiscount={(discount) => setDiscount(discount)}
         onManagerApprove={() => setManagerApproved(true)}
+        onApplyDiscount={() => {
+          setDiscountApplied(true);
+          setShowDiscountPanel(false);
+        }}
       />
 
       {/* 拦截弹窗 */}

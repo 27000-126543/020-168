@@ -21,17 +21,60 @@ import type { ConsultationForm } from '@/types';
 
 const LS_CONSULT_CACHE = 'dental_consult_cache_';
 
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = btoa(binary);
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlToBytes(str: string): Uint8Array | null {
+  try {
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
 function toBase64(str: string): string {
   try {
-    return btoa(unescape(encodeURIComponent(str)));
+    if (typeof TextEncoder !== 'undefined') {
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(str);
+      return bytesToBase64Url(bytes);
+    }
+    return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   } catch {
-    return encodeURIComponent(str);
+    try {
+      return encodeURIComponent(str);
+    } catch {
+      return '';
+    }
   }
 }
 
 function fromBase64(str: string): string | null {
   try {
-    return decodeURIComponent(escape(atob(str)));
+    if (typeof TextDecoder !== 'undefined') {
+      const bytes = base64UrlToBytes(str);
+      if (bytes) {
+        const decoder = new TextDecoder('utf-8');
+        const result = decoder.decode(bytes);
+        if (result) return result;
+      }
+    }
+  } catch {}
+  try {
+    return decodeURIComponent(escape(atob(str.replace(/-/g, '+').replace(/_/g, '/'))));
   } catch {
     try {
       return decodeURIComponent(str);

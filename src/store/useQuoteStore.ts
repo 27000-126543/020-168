@@ -25,6 +25,7 @@ interface QuoteState {
   selectedTierId: string | null;
   selectedDiscount: AnyDiscount | null;
   managerApproved: boolean;
+  discountApplied: boolean;
   patientInfo: PatientInfo;
   consultationHistory: ConsultationForm[];
 
@@ -32,6 +33,7 @@ interface QuoteState {
   setSelectedTier: (tierId: string) => void;
   setDiscount: (discount: AnyDiscount | null) => void;
   setManagerApproved: (approved: boolean) => void;
+  setDiscountApplied: (applied: boolean) => void;
   setPatientInfo: (info: Partial<PatientInfo>) => void;
   createConsultation: (params: {
     packageId: string;
@@ -59,6 +61,7 @@ export const useQuoteStore = create<QuoteState>((set, get) => ({
   selectedTierId: null,
   selectedDiscount: null,
   managerApproved: false,
+  discountApplied: false,
   patientInfo: {
     name: '',
     age: '',
@@ -74,10 +77,13 @@ export const useQuoteStore = create<QuoteState>((set, get) => ({
 
   setDiscount: (discount) => set({
     selectedDiscount: discount,
-    managerApproved: false
+    managerApproved: false,
+    discountApplied: false
   }),
 
   setManagerApproved: (approved) => set({ managerApproved: approved }),
+
+  setDiscountApplied: (applied) => set({ discountApplied: applied }),
 
   setPatientInfo: (info) => set((state) => ({
     patientInfo: { ...state.patientInfo, ...info }
