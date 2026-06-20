@@ -1,0 +1,257 @@
+
+import React, { useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { QRCodeCanvas } from 'qrcode.react';
+import {
+  User,
+  Calendar,
+  Clock,
+  FileText,
+  Printer,
+  MessageSquare,
+  Save,
+  CheckCircle,
+  Share2,
+} from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { useQuoteStore } from '@/store/useQuoteStore';
+import { formatPrice, formatDate } from '@/utils/calculator';
+
+const Consultation: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { getConsultation } = useQuoteStore();
+
+  const consultation = useMemo(() => {
+    return getConsultation(id || '');
+  }, [id, getConsultation]);
+
+  if (!consultation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ivory">
+        <div className="text-center">
+          <FileText size={48} className="text-gray-300 mx-auto mb-4" />
+          <p className="text-slate-light mb-4">洽谈单不存在或已过期</p>
+          <Button onClick={() => navigate('/')}>返回首页</Button>
+        </div>
+      </div>
+    );
+  }
+
+  const qrValue = `${window.location.origin}/consultation/${consultation.id}`;
+  const discountAmount = consultation.originalPrice - consultation.finalPrice;
+  const createdAt = new Date(consultation.createdAt);
+  const expiresAt = new Date(consultation.expiresAt);
+
+  return (
+    <div className="min-h-screen bg-ivory flex flex-col">
+      <PageHeader
+        title="洽谈单"
+        subtitle="患者扫码可查看详情"
+        showBack
+      />
+
+      <main className="flex-1 overflow-auto p-8">
+        <div className="max-w-5xl mx-auto flex gap-8">
+          {/* 左侧 - 洽谈单详情 */}
+          <div className="flex-1 space-y-6">
+            {/* 患者信息卡片 */}
+            <div className="card p-6 animate-slide-up">
+              <div className="flex items-center gap-2 mb-4">
+                <User size={20} className="text-primary" />
+                <h3 className="font-bold text-slate text-lg">患者信息</h3>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <p className="text-sm text-slate-light mb-1">姓名</p>
+                  <p className="font-medium text-slate text-lg">
+                    {consultation.patientInfo.name || '未填写'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <p className="text-sm text-slate-light mb-1">年龄</p>
+                  <p className="font-medium text-slate text-lg">
+                    {consultation.patientInfo.age || '未填写'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <p className="text-sm text-slate-light mb-1">主诉</p>
+                  <p className="font-medium text-slate text-lg truncate">
+                    {consultation.patientInfo.complaint || '未填写'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 项目信息 */}
+            <div className="card p-6 animate-slide-up" style={{ animationDelay: '50ms' }}>
+              <div className="flex items-center gap-2 mb-4">
+                <FileText size={20} className="text-mint" />
+                <h3 className="font-bold text-slate text-lg">项目方案</h3>
+              </div>
+              
+              <div className="bg-gradient-to-r from-primary-50 to-mint-50 rounded-2xl p-5 mb-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="font-bold text-slate text-lg">{consultation.packageName}</p>
+                    <p className="text-sm text-slate-light">{consultation.selectedTier?.name}方案</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-3xl font-bold text-primary">
+                      ¥{formatPrice(consultation.finalPrice)}
+                    </p>
+                    {discountAmount > 0 && (
+                      <p className="text-sm text-coral">
+                        已优惠 ¥{formatPrice(discountAmount)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 配置详情 */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm text-slate-light">材料</span>
+                  <span className="font-medium text-slate">{consultation.materialName}</span>
+                </div>
+                {consultation.toothCount > 0 && (
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                    <span className="text-sm text-slate-light">牙位数量</span>
+                    <span className="font-medium text-slate">{consultation.toothCount} 颗</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm text-slate-light">拍片检查</span>
+                  <span className="font-medium text-slate">
+                    {consultation.includesXray ? '包含' : '不包含'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <span className="text-sm text-slate-light">复诊维护</span>
+                  <span className="font-medium text-slate">
+                    {consultation.includesFollowUp ? '包含' : '不包含'}
+                  </span>
+                </div>
+              </div>
+
+              {/* 包含项目 */}
+              {consultation.selectedTier && (
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-sm font-medium text-slate mb-3">包含项目</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {consultation.selectedTier.includes.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <CheckCircle size={16} className="text-mint" />
+                        <span className="text-sm text-slate-light">{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 优惠信息 */}
+            {consultation.discount && (
+              <div className="card p-6 animate-slide-up" style={{ animationDelay: '100ms' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-xl bg-coral-50 flex items-center justify-center">
+                      <Share2 size={18} className="text-coral" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate">{consultation.discount.name}</p>
+                      <p className="text-sm text-slate-light">{consultation.discount.description}</p>
+                    </div>
+                  </div>
+                  <span className="text-coral font-bold text-lg">
+                    -¥{formatPrice(discountAmount)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* 时间信息 */}
+            <div className="card p-6 animate-slide-up" style={{ animationDelay: '150ms' }}>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-3">
+                  <Calendar size={20} className="text-primary" />
+                  <div>
+                    <p className="text-sm text-slate-light">创建时间</p>
+                    <p className="font-medium text-slate">{formatDate(createdAt)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Clock size={20} className="text-coral" />
+                  <div>
+                    <p className="text-sm text-slate-light">有效期至</p>
+                    <p className="font-medium text-coral">{formatDate(expiresAt)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 右侧 - 二维码和操作 */}
+          <div className="w-80 space-y-6">
+            {/* 二维码卡片 */}
+            <div className="card p-6 text-center animate-scale-in">
+              <h3 className="font-bold text-slate text-lg mb-2">扫码查看洽谈单</h3>
+              <p className="text-sm text-slate-light mb-6">患者扫码可保存或分享</p>
+              
+              <div className="bg-white p-4 rounded-2xl inline-block shadow-inner mb-4">
+                <QRCodeCanvas
+                  value={qrValue}
+                  size={200}
+                  level="H"
+                  includeMargin={false}
+                  fgColor="#1E5F8A"
+                />
+              </div>
+
+              <div className="bg-mint-50 rounded-2xl p-4 text-left">
+                <div className="flex items-start gap-2">
+                  <CheckCircle size={18} className="text-mint-dark mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-slate">电子洽谈单</p>
+                    <p className="text-xs text-slate-light mt-0.5">
+                      报价透明，避免口头承诺不一致
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="space-y-3">
+              <Button variant="primary" fullWidth size="lg">
+                <Printer size={20} className="mr-2" />
+                打印洽谈单
+              </Button>
+              <Button variant="secondary" fullWidth>
+                <MessageSquare size={18} className="mr-2" />
+                发送短信给患者
+              </Button>
+              <Button variant="ghost" fullWidth>
+                <Save size={18} className="mr-2" />
+                保存到历史记录
+              </Button>
+            </div>
+
+            {/* 温馨提示 */}
+            <div className="bg-coral-50 rounded-2xl p-4">
+              <p className="text-sm text-coral font-medium mb-1">温馨提示</p>
+              <p className="text-xs text-coral/80 leading-relaxed">
+                此报价为初步评估，最终治疗方案与费用以医生面诊结果为准。
+                报价有效期7天，请在有效期内预约就诊。
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default Consultation;
