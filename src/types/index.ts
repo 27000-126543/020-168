@@ -66,6 +66,7 @@ export interface QuoteTier {
   tagline: string;
   totalPrice: number;
   originalPrice: number;
+  previewPrice?: number;
   includes: string[];
   excludes: string[];
   salesPitch: string;

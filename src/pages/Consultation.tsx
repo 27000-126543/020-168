@@ -1,6 +1,6 @@
 
-import React, { useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import {
   User,
@@ -17,15 +17,42 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { useQuoteStore } from '@/store/useQuoteStore';
 import { formatPrice, formatDate } from '@/utils/calculator';
+import type { ConsultationForm, QuoteTier, AnyDiscount } from '@/types';
+
+function decodeConsultationFromUrl(search: string): ConsultationForm | null {
+  try {
+    const params = new URLSearchParams(search);
+    const data = params.get('d');
+    if (!data) return null;
+    return JSON.parse(decodeURIComponent(data));
+  } catch {
+    return null;
+  }
+}
+
+function encodeConsultationToUrl(form: ConsultationForm): string {
+  const data = encodeURIComponent(JSON.stringify(form));
+  return `/consultation/${form.id}?d=${data}`;
+}
+
+export { encodeConsultationToUrl };
 
 const Consultation: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { getConsultation } = useQuoteStore();
+  const [fromUrl, setFromUrl] = useState(false);
 
   const consultation = useMemo(() => {
-    return getConsultation(id || '');
-  }, [id, getConsultation]);
+    const urlData = decodeConsultationFromUrl(location.search);
+    if (urlData && urlData.id === id) {
+      setFromUrl(true);
+      return urlData;
+    }
+    const storeData = getConsultation(id || '');
+    return storeData || null;
+  }, [id, location.search, getConsultation]);
 
   if (!consultation) {
     return (
@@ -39,10 +66,12 @@ const Consultation: React.FC = () => {
     );
   }
 
-  const qrValue = `${window.location.origin}/consultation/${consultation.id}`;
+  const qrPath = encodeConsultationToUrl(consultation);
+  const qrValue = `${window.location.origin}${qrPath}`;
   const discountAmount = consultation.originalPrice - consultation.finalPrice;
   const createdAt = new Date(consultation.createdAt);
   const expiresAt = new Date(consultation.expiresAt);
+  const isExpired = new Date() > expiresAt;
 
   return (
     <div className="min-h-screen bg-ivory flex flex-col">
@@ -56,6 +85,17 @@ const Consultation: React.FC = () => {
         <div className="max-w-5xl mx-auto flex gap-8">
           {/* 左侧 - 洽谈单详情 */}
           <div className="flex-1 space-y-6">
+            {/* 过期提示 */}
+            {isExpired && (
+              <div className="p-4 bg-coral-50 rounded-2xl flex items-center gap-3 text-coral">
+                <Clock size={20} />
+                <div>
+                  <p className="font-medium">此洽谈单已过期</p>
+                  <p className="text-sm opacity-80">有效期至 {formatDate(expiresAt)}，请联系门诊重新获取报价</p>
+                </div>
+              </div>
+            )}
+
             {/* 患者信息卡片 */}
             <div className="card p-6 animate-slide-up">
               <div className="flex items-center gap-2 mb-4">
@@ -90,7 +130,7 @@ const Consultation: React.FC = () => {
                 <FileText size={20} className="text-mint" />
                 <h3 className="font-bold text-slate text-lg">项目方案</h3>
               </div>
-              
+
               <div className="bg-gradient-to-r from-primary-50 to-mint-50 rounded-2xl p-5 mb-5">
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -183,10 +223,12 @@ const Consultation: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Clock size={20} className="text-coral" />
+                  <Clock size={20} className={isExpired ? 'text-coral' : 'text-mint'} />
                   <div>
                     <p className="text-sm text-slate-light">有效期至</p>
-                    <p className="font-medium text-coral">{formatDate(expiresAt)}</p>
+                    <p className={isExpired ? 'font-medium text-coral' : 'font-medium text-mint'}>
+                      {formatDate(expiresAt)}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -199,7 +241,7 @@ const Consultation: React.FC = () => {
             <div className="card p-6 text-center animate-scale-in">
               <h3 className="font-bold text-slate text-lg mb-2">扫码查看洽谈单</h3>
               <p className="text-sm text-slate-light mb-6">患者扫码可保存或分享</p>
-              
+
               <div className="bg-white p-4 rounded-2xl inline-block shadow-inner mb-4">
                 <QRCodeCanvas
                   value={qrValue}
@@ -223,21 +265,23 @@ const Consultation: React.FC = () => {
               </div>
             </div>
 
-            {/* 操作按钮 */}
-            <div className="space-y-3">
-              <Button variant="primary" fullWidth size="lg">
-                <Printer size={20} className="mr-2" />
-                打印洽谈单
-              </Button>
-              <Button variant="secondary" fullWidth>
-                <MessageSquare size={18} className="mr-2" />
-                发送短信给患者
-              </Button>
-              <Button variant="ghost" fullWidth>
-                <Save size={18} className="mr-2" />
-                保存到历史记录
-              </Button>
-            </div>
+            {/* 操作按钮 - 仅在当前设备显示 */}
+            {!fromUrl && (
+              <div className="space-y-3">
+                <Button variant="primary" fullWidth size="lg">
+                  <Printer size={20} className="mr-2" />
+                  打印洽谈单
+                </Button>
+                <Button variant="secondary" fullWidth>
+                  <MessageSquare size={18} className="mr-2" />
+                  发送短信给患者
+                </Button>
+                <Button variant="ghost" fullWidth>
+                  <Save size={18} className="mr-2" />
+                  保存到历史记录
+                </Button>
+              </div>
+            )}
 
             {/* 温馨提示 */}
             <div className="bg-coral-50 rounded-2xl p-4">

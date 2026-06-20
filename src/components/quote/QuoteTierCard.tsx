@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Check, X, MessageCircle } from 'lucide-react';
+import { Check, X, MessageCircle, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QuoteTier } from '@/types';
 import { formatPrice } from '@/utils/calculator';
@@ -30,6 +30,8 @@ export const QuoteTierCard: React.FC<QuoteTierCardProps> = ({
     if (isHighlighted) return 'bg-gradient-to-r from-mint to-mint-light text-white';
     return 'bg-gray-50 text-slate';
   };
+
+  const hasPreview = tier.previewPrice !== undefined && tier.previewPrice !== tier.totalPrice;
 
   return (
     <div
@@ -69,6 +71,13 @@ export const QuoteTierCard: React.FC<QuoteTierCardProps> = ({
           <span className="text-sm text-gray-400 line-through">
             原价 ¥{formatPrice(tier.originalPrice)}
           </span>
+        )}
+        {/* 测算价提示 */}
+        {hasPreview && (
+          <div className="mt-2 p-2 bg-coral-50 rounded-lg flex items-center gap-1.5 text-xs text-coral">
+            <AlertTriangle size={12} />
+            <span>确认后可至 ¥{formatPrice(tier.previewPrice!)}</span>
+          </div>
         )}
       </div>
 

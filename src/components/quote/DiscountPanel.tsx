@@ -1,17 +1,19 @@
 
 import React from 'react';
-import { X, Percent, Calendar, Users, AlertTriangle, Check } from 'lucide-react';
+import { X, Percent, Calendar, Users, AlertTriangle, Check, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AnyDiscount, FullReduceDiscount, InstallmentDiscount, ReferralDiscount } from '@/types';
 import { fullReduceDiscounts, installmentDiscounts, referralDiscounts } from '@/data/packages';
-import { formatPrice, applyDiscount, calculateInstallment, requiresManagerApproval } from '@/utils/calculator';
+import { formatPrice, applyDiscount, calculateInstallment } from '@/utils/calculator';
 
 interface DiscountPanelProps {
   isOpen: boolean;
   onClose: () => void;
   originalPrice: number;
   selectedDiscount: AnyDiscount | null;
+  managerApproved: boolean;
   onSelectDiscount: (discount: AnyDiscount | null) => void;
+  onManagerApprove: () => void;
 }
 
 export const DiscountPanel: React.FC<DiscountPanelProps> = ({
@@ -19,13 +21,20 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
   onClose,
   originalPrice,
   selectedDiscount,
+  managerApproved,
   onSelectDiscount,
+  onManagerApprove,
 }) => {
   if (!isOpen) return null;
 
-  const finalPrice = applyDiscount(originalPrice, selectedDiscount);
-  const needsApproval = selectedDiscount ? requiresManagerApproval(originalPrice, finalPrice) : false;
-  const installmentPerMonth = calculateInstallment(finalPrice, selectedDiscount);
+  const needsApproval = selectedDiscount?.requiresManagerApproval === true;
+  const approved = !needsApproval || managerApproved;
+
+  const discountedPrice = applyDiscount(originalPrice, selectedDiscount);
+  const installmentPerMonth = calculateInstallment(discountedPrice, selectedDiscount);
+
+  const displayPrice = approved ? discountedPrice : originalPrice;
+  const discountAmount = originalPrice - displayPrice;
 
   const isDiscountSelected = (discount: AnyDiscount) => {
     return selectedDiscount?.type === discount.type && selectedDiscount?.id === discount.id;
@@ -41,7 +50,8 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
 
   const DiscountCard = ({ discount, icon: Icon, color }: { discount: AnyDiscount; icon: React.ElementType; color: string }) => {
     const selected = isDiscountSelected(discount);
-    
+    const isSelectedAndNeedsApproval = selected && discount.requiresManagerApproval && !managerApproved;
+
     let priceDisplay = '';
     if (discount.type === 'fullReduce') {
       const fr = discount as FullReduceDiscount;
@@ -58,10 +68,12 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
       <div
         className={cn(
           'p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200',
-          selected
+          selected && !isSelectedAndNeedsApproval
             ? 'border-primary bg-primary-50'
+            : isSelectedAndNeedsApproval
+            ? 'border-coral bg-coral-50/50'
             : 'border-gray-200 hover:border-primary/30 hover:bg-gray-50',
-          discount.requiresManagerApproval && 'border-coral/30'
+          discount.requiresManagerApproval && !selected && 'border-dashed border-coral/40'
         )}
         onClick={() => handleDiscountClick(discount)}
       >
@@ -77,15 +89,20 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
           </div>
           <div className={cn(
             'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors',
-            selected ? 'bg-primary border-primary' : 'border-gray-300'
+            selected && !isSelectedAndNeedsApproval ? 'bg-primary border-primary' : 'border-gray-300',
+            isSelectedAndNeedsApproval && 'bg-coral border-coral'
           )}>
-            {selected && <Check size={14} className="text-white" />}
+            {selected && !isSelectedAndNeedsApproval && <Check size={14} className="text-white" />}
+            {isSelectedAndNeedsApproval && <AlertTriangle size={14} className="text-white" />}
           </div>
         </div>
         {discount.requiresManagerApproval && (
-          <div className="mt-3 flex items-center gap-1.5 text-coral text-xs">
+          <div className={cn(
+            'mt-3 flex items-center gap-1.5 text-xs',
+            isSelectedAndNeedsApproval ? 'text-coral font-medium' : 'text-coral/70'
+          )}>
             <AlertTriangle size={14} />
-            <span>需主管确认</span>
+            <span>{isSelectedAndNeedsApproval ? '待主管确认，仅测算展示' : '需主管确认'}</span>
           </div>
         )}
       </div>
@@ -94,13 +111,11 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* 遮罩 */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
 
-      {/* 面板 */}
       <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl animate-scale-in m-6 max-h-[85vh] overflow-hidden flex flex-col">
         {/* 头部 */}
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
@@ -117,7 +132,12 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
         </div>
 
         {/* 价格概览 */}
-        <div className="px-6 py-4 bg-gradient-to-r from-primary-50 to-mint-50 border-b border-gray-100">
+        <div className={cn(
+          'px-6 py-4 border-b border-gray-100',
+          approved
+            ? 'bg-gradient-to-r from-primary-50 to-mint-50'
+            : 'bg-gradient-to-r from-coral-50 to-coral-50/30'
+        )}>
           <div className="flex items-baseline justify-between">
             <div>
               <span className="text-sm text-slate-light">原总价</span>
@@ -126,28 +146,41 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
               </p>
             </div>
             <div className="text-right">
-              <span className="text-sm text-slate-light">优惠后</span>
-              <p className="text-2xl font-bold text-primary">
-                ¥{formatPrice(finalPrice)}
+              <span className="text-sm text-slate-light">
+                {approved ? '优惠后' : '成交价（不含待确认优惠）'}
+              </span>
+              <p className={cn(
+                'text-2xl font-bold',
+                approved ? 'text-primary' : 'text-coral'
+              )}>
+                ¥{formatPrice(displayPrice)}
               </p>
-              {installmentPerMonth && (
+              {installmentPerMonth && approved && (
                 <p className="text-xs text-slate-light mt-0.5">
                   约 ¥{formatPrice(installmentPerMonth)}/期
                 </p>
               )}
             </div>
           </div>
-          {needsApproval && (
-            <div className="mt-3 p-3 bg-coral-50 rounded-xl flex items-center gap-2 text-coral">
-              <AlertTriangle size={18} />
-              <span className="text-sm font-medium">优惠幅度超出授权范围，请联系主管确认</span>
+          {/* 未授权时的测算提示 */}
+          {needsApproval && !managerApproved && (
+            <div className="mt-3 p-3 bg-white/80 rounded-xl">
+              <div className="flex items-center gap-2 text-coral mb-1.5">
+                <AlertTriangle size={16} />
+                <span className="text-sm font-medium">
+                  该优惠需主管确认，当前仅做测算展示
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-light">测算优惠后</span>
+                <span className="text-coral font-medium">¥{formatPrice(discountedPrice)}</span>
+              </div>
             </div>
           )}
         </div>
 
         {/* 优惠选项 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* 满减优惠 */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Percent size={18} className="text-primary" />
@@ -165,7 +198,6 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
             </div>
           </div>
 
-          {/* 分期方案 */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Calendar size={18} className="text-mint" />
@@ -183,7 +215,6 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
             </div>
           </div>
 
-          {/* 老客转介绍 */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Users size={18} className="text-coral" />
@@ -210,15 +241,22 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
           >
             清除优惠
           </button>
-          <button
-            className={cn(
-              'flex-1 btn-primary',
-              needsApproval && 'bg-coral hover:bg-coral-light'
-            )}
-            onClick={onClose}
-          >
-            {needsApproval ? '请主管确认' : '确认应用'}
-          </button>
+          {needsApproval && !managerApproved ? (
+            <button
+              className="flex-1 btn-primary bg-coral hover:bg-coral-light flex items-center justify-center gap-2"
+              onClick={onManagerApprove}
+            >
+              <ShieldCheck size={18} />
+              主管确认授权
+            </button>
+          ) : (
+            <button
+              className="flex-1 btn-primary"
+              onClick={onClose}
+            >
+              确认应用
+            </button>
+          )}
         </div>
       </div>
     </div>
