@@ -50,7 +50,9 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
 
   const DiscountCard = ({ discount, icon: Icon, color }: { discount: AnyDiscount; icon: React.ElementType; color: string }) => {
     const selected = isDiscountSelected(discount);
-    const isSelectedAndNeedsApproval = selected && discount.requiresManagerApproval && !managerApproved;
+    const requiresApproval = discount.requiresManagerApproval;
+    const isSelectedAndNeedsApproval = selected && requiresApproval && !managerApproved;
+    const isSelectedAndApproved = selected && requiresApproval && managerApproved;
 
     let priceDisplay = '';
     if (discount.type === 'fullReduce') {
@@ -68,12 +70,14 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
       <div
         className={cn(
           'p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200',
-          selected && !isSelectedAndNeedsApproval
+          isSelectedAndApproved
+            ? 'border-mint bg-mint-50'
+            : selected && !requiresApproval
             ? 'border-primary bg-primary-50'
             : isSelectedAndNeedsApproval
             ? 'border-coral bg-coral-50/50'
             : 'border-gray-200 hover:border-primary/30 hover:bg-gray-50',
-          discount.requiresManagerApproval && !selected && 'border-dashed border-coral/40'
+          requiresApproval && !selected && 'border-dashed border-coral/40'
         )}
         onClick={() => handleDiscountClick(discount)}
       >
@@ -89,20 +93,44 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
           </div>
           <div className={cn(
             'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors',
-            selected && !isSelectedAndNeedsApproval ? 'bg-primary border-primary' : 'border-gray-300',
-            isSelectedAndNeedsApproval && 'bg-coral border-coral'
+            isSelectedAndApproved
+              ? 'bg-mint border-mint'
+              : selected && !requiresApproval
+              ? 'bg-primary border-primary'
+              : isSelectedAndNeedsApproval
+              ? 'bg-coral border-coral'
+              : 'border-gray-300'
           )}>
-            {selected && !isSelectedAndNeedsApproval && <Check size={14} className="text-white" />}
+            {isSelectedAndApproved && <Check size={14} className="text-white" />}
+            {selected && !requiresApproval && <Check size={14} className="text-white" />}
             {isSelectedAndNeedsApproval && <AlertTriangle size={14} className="text-white" />}
           </div>
         </div>
-        {discount.requiresManagerApproval && (
+        {requiresApproval && (
           <div className={cn(
             'mt-3 flex items-center gap-1.5 text-xs',
-            isSelectedAndNeedsApproval ? 'text-coral font-medium' : 'text-coral/70'
+            isSelectedAndApproved
+              ? 'text-mint-dark font-medium'
+              : isSelectedAndNeedsApproval
+              ? 'text-coral font-medium'
+              : 'text-coral/70'
           )}>
-            <AlertTriangle size={14} />
-            <span>{isSelectedAndNeedsApproval ? '待主管确认，仅测算展示' : '需主管确认'}</span>
+            {isSelectedAndApproved ? (
+              <>
+                <Check size={14} />
+                <span>已授权</span>
+              </>
+            ) : isSelectedAndNeedsApproval ? (
+              <>
+                <AlertTriangle size={14} />
+                <span>待主管确认，仅测算展示</span>
+              </>
+            ) : (
+              <>
+                <AlertTriangle size={14} />
+                <span>需主管确认</span>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -162,19 +190,35 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
               )}
             </div>
           </div>
-          {/* 未授权时的测算提示 */}
-          {needsApproval && !managerApproved && (
-            <div className="mt-3 p-3 bg-white/80 rounded-xl">
-              <div className="flex items-center gap-2 text-coral mb-1.5">
-                <AlertTriangle size={16} />
-                <span className="text-sm font-medium">
-                  该优惠需主管确认，当前仅做测算展示
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-light">测算优惠后</span>
-                <span className="text-coral font-medium">¥{formatPrice(discountedPrice)}</span>
-              </div>
+          {/* 授权状态提示 */}
+          {needsApproval && (
+            <div className={cn(
+              'mt-3 p-3 rounded-xl flex items-center gap-2',
+              managerApproved
+                ? 'bg-mint-50 border border-mint/20'
+                : 'bg-white/80'
+            )}>
+              {managerApproved ? (
+                <>
+                  <Check size={18} className="text-mint-dark" />
+                  <span className="text-sm font-medium text-mint-dark">
+                    主管已授权，优惠将在确认应用后生效
+                  </span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle size={16} className="text-coral" />
+                  <span className="text-sm font-medium text-coral">
+                    该优惠需主管确认，当前仅做测算展示
+                  </span>
+                </>
+              )}
+              {!managerApproved && (
+                <div className="flex items-center justify-between text-sm w-full ml-2">
+                  <span className="text-slate-light">测算优惠后</span>
+                  <span className="text-coral font-medium">¥{formatPrice(discountedPrice)}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -254,7 +298,7 @@ export const DiscountPanel: React.FC<DiscountPanelProps> = ({
               className="flex-1 btn-primary"
               onClick={onClose}
             >
-              确认应用
+              {needsApproval && managerApproved ? '确认应用优惠' : '确认应用'}
             </button>
           )}
         </div>

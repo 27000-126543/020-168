@@ -474,22 +474,28 @@ const QuoteDetail: React.FC = () => {
             )}
 
             {/* 生成洽谈单按钮 */}
-            <div className="mt-6 relative">
+            <div className="mt-6">
+              {needsApproval && !managerApproved ? (
+              <div className="p-4 bg-coral-50 rounded-2xl mb-3 flex items-start gap-3">
+                <AlertTriangle size={20} className="text-coral flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-coral font-medium mb-0.5">当前优惠需主管确认</p>
+                  <p className="text-coral/70 text-sm">
+                    该优惠「{selectedDiscount?.name}」尚未授权，无法直接生成洽谈单。请先联系主管确认，或到上方「优惠调整」中清除该优惠后再生成。
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
               <Button
                 size="lg"
                 fullWidth
                 onClick={handleGenerateForm}
-                disabled={!selectedTier}
+                disabled={!selectedTier || (needsApproval && !managerApproved)}
               >
                 <FileText size={20} className="mr-2" />
-                生成洽谈单
+                {needsApproval && !managerApproved ? '优惠待主管确认' : '生成洽谈单'}
               </Button>
-              {needsApproval && !managerApproved && (
-                <p className="text-center text-coral text-sm mt-2 flex items-center justify-center gap-1">
-                  <AlertTriangle size={14} />
-                  当前优惠待确认，生成洽谈单将不含该优惠
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -521,8 +527,15 @@ const QuoteDetail: React.FC = () => {
                 请联系主管完成授权，或移除该优惠后生成洽谈单。
               </p>
               <div className="flex gap-3">
-                <Button variant="secondary" fullWidth onClick={() => setShowBlockModal(false)}>
-                  移除优惠
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  onClick={() => {
+                    setDiscount(null);
+                    setShowBlockModal(false);
+                  }}
+                >
+                  移除优惠并生成
                 </Button>
                 <Button
                   variant="primary"
